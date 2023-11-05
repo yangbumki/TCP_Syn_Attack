@@ -7,7 +7,7 @@
 
 int main(void)
 {
-	RawSocket rawSock("192.168.100.56", "127.0.0.1", 8986, 9000);
+	RawSocket rawSock("192.168.100.56", "127.0.0.1", 8986, 52210);
 	while(1) {
 		rawSock.Attack();
 		if (_kbhit()) {
