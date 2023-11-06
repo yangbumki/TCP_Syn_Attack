@@ -2,14 +2,24 @@
 #include <conio.h>
 
 #include "RawSocket.hpp"
+#include "Timer.hpp"
 
 #define ESC			27
 
 int main(void)
 {
-	RawSocket rawSock("192.168.100.56", "127.0.0.1", 8986, 52210);
+	int currentCnt = 0;
+	RawSocket rawSock("192.168.20.130", "192.168.20.70", 9000, 9000);
+	TIMER timer(1);
+
+	timer.StartTimer();
+
 	while(1) {
-		rawSock.Attack();
+		if(timer.Tick()) {
+			rawSock.Attack();
+			printf("[SYSTEM - TIME] : %d(s)\n", ++currentCnt);
+		}
+
 		if (_kbhit()) {
 			if (_getch() == ESC) break;
 		}
