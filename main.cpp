@@ -9,15 +9,15 @@
 int main(void)
 {
 	int currentCnt = 0;
-	RawSocket rawSock("192.168.20.130", "192.168.20.70", 9000, 9000);
+	RawSocket rawSock("192.168.100.1", "127.0.0.1", IPPROTO_ICMP);
 	TIMER timer(1);
 
 	timer.StartTimer();
 
 	while(1) {
 		if(timer.Tick()) {
-			rawSock.Attack();
 			printf("[SYSTEM - TIME] : %d(s)\n", ++currentCnt);
+			rawSock.ICMP_Attack();
 		}
 
 		if (_kbhit()) {
