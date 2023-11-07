@@ -9,7 +9,7 @@
 int main(void)
 {
 	int currentCnt = 0;
-	RawSocket rawSock("192.168.100.1", "127.0.0.1", IPPROTO_ICMP);
+	RawSocket rawSock("127.0.0.1", "127.0.0.1", IPPROTO_ICMP);
 	TIMER timer(1);
 
 	timer.StartTimer();
